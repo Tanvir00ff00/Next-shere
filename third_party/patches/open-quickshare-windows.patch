@@ -1,0 +1,655 @@
+diff --git a/core_lib/Cargo.toml b/core_lib/Cargo.toml
+index 2639fe3..6b9e93e 100644
+--- a/core_lib/Cargo.toml
++++ b/core_lib/Cargo.toml
+@@ -37,7 +37,6 @@ prost = "0.13"
+ rand = "0.9"
+ serde = { version = "1.0", features = ["derive"] }
+ sha2 = "0.10"
+-sys_metrics = { git = "https://github.com/Martichou/sys_metrics" }
+ tokio = { version = "1.43", features = [
+     "macros",
+     "rt",
+diff --git a/core_lib/src/hdl/inbound.rs b/core_lib/src/hdl/inbound.rs
+index 6495759..0f6bf0a 100644
+--- a/core_lib/src/hdl/inbound.rs
++++ b/core_lib/src/hdl/inbound.rs
+@@ -1,5 +1,7 @@
+ use std::fs::File;
+-use std::os::unix::fs::FileExt;
++use std::io::{Seek, SeekFrom, Write};
++trait FileExt { fn write_all_at(&self, data: &[u8], offset: u64) -> std::io::Result<()>; }
++impl FileExt for File { fn write_all_at(&self, data: &[u8], offset: u64) -> std::io::Result<()> { let mut file = self.try_clone()?; file.seek(SeekFrom::Start(offset))?; file.write_all(data) } }
+ use std::path::PathBuf;
+ use std::time::Duration;
+ 
+@@ -44,6 +46,13 @@ use crate::{location_nearby_connections, sharing_nearby};
+ 
+ type HmacSha256 = Hmac<Sha256>;
+ 
++fn validate_received_name(name: &str) -> Result<(), anyhow::Error> {
++    if name.is_empty() || name.chars().count() > 180 || name.ends_with('.') || name.ends_with(' ') || name.chars().any(|c| c < ' ' || "<>:\"/\\|?*".contains(c)) { return Err(anyhow!("Invalid filename")); }
++    let stem = name.split('.').next().unwrap_or("").to_uppercase();
++    if ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str()) || (1..=9).any(|i| stem == format!("COM{i}") || stem == format!("LPT{i}")) { return Err(anyhow!("Reserved filename")); }
++    Ok(())
++}
++
+ const SANE_FRAME_LENGTH: i32 = 5 * 1024 * 1024;
+ const SANITY_DURATION: Duration = Duration::from_micros(10);
+ 
+@@ -120,7 +129,6 @@ pub fn peek_client_introduction(buf: &[u8]) -> Option<String> {
+ }
+ 
+ /// Read one length-prefixed `[4-byte len][frame]` message from a stream (plaintext).
+-#[cfg(all(feature = "experimental", target_os = "linux"))]
+ pub(crate) async fn read_frame_from<R: AsyncRead + Unpin>(
+     stream: &mut R,
+ ) -> Result<Vec<u8>, anyhow::Error> {
+@@ -136,7 +144,6 @@ pub(crate) async fn read_frame_from<R: AsyncRead + Unpin>(
+ }
+ 
+ /// Write a length-prefixed `[4-byte len][frame]` message to a stream (plaintext).
+-#[cfg(all(feature = "experimental", target_os = "linux"))]
+ async fn send_frame_on<W: AsyncWrite + Unpin>(
+     stream: &mut W,
+     data: &[u8],
+@@ -152,6 +159,8 @@ async fn send_frame_on<W: AsyncWrite + Unpin>(
+ #[derive(Debug)]
+ pub struct InboundRequest<S = TcpStream> {
+     socket: S,
++    peer_endpoint: String,
++    pub destination: std::path::PathBuf,
+     pub state: InnerState,
+     sender: Sender<ChannelMessage>,
+     receiver: Receiver<ChannelMessage>,
+@@ -187,6 +196,8 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+ 
+         Self {
+             socket,
++            peer_endpoint: String::new(),
++            destination: get_download_dir().join(&id),
+             state: InnerState {
+                 id,
+                 server_seq: 0,
+@@ -569,6 +580,8 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+             .as_ref()
+             .ok_or_else(|| anyhow!("Missing required fields"))?;
+ 
++        self.peer_endpoint = connection_request.endpoint_id().to_string();
++
+         // The sender's advertised LAN address picks the upgrade path later:
+         // same subnet → offer our LAN socket; different/absent → host a hotspot.
+         self.remote_ip = connection_request
+@@ -773,8 +786,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+ 				r#type: Some(location_nearby_connections::v1_frame::FrameType::ConnectionResponse.into()),
+ 				connection_response: Some(location_nearby_connections::ConnectionResponseFrame {
+ 					response: Some(location_nearby_connections::connection_response_frame::ResponseStatus::Accept.into()),
++                    status: Some(0),
++                    multiplex_socket_bitmask: Some(0),
+ 					os_info: Some(location_nearby_connections::OsInfo {
+-						r#type: Some(location_nearby_connections::os_info::OsType::Linux.into())
++						r#type: Some(location_nearby_connections::os_info::OsType::Windows.into())
+ 					}),
+ 					..Default::default()
+ 				}),
+@@ -901,7 +916,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+                         info!("Processing PayloadType::Bytes");
+                         let payload_id = header.id();
+ 
+-                        if header.total_size() > SANE_FRAME_LENGTH.into() {
++                        if header.total_size() < 0 || header.total_size() > SANE_FRAME_LENGTH.into() || self.state.payload_buffers.len() > 32 {
+                             self.state.payload_buffers.remove(&payload_id);
+                             return Err(anyhow!(
+                                 "Payload too large: {} bytes",
+@@ -927,6 +942,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+ 
+                         let buffer = self.state.payload_buffers.get_mut(&payload_id).unwrap();
+                         if let Some(body) = &chunk.body {
++                            if buffer.len() + body.len() > SANE_FRAME_LENGTH as usize || buffer.len() + body.len() > header.total_size() as usize { return Err(anyhow!("Payload buffer too large")); }
+                             buffer.extend(body);
+                         }
+ 
+@@ -1079,7 +1095,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+                             file_internal
+                                 .file
+                                 .as_ref()
+-                                .unwrap()
++                                .ok_or_else(|| anyhow!("File payload before consent"))?
+                                 .write_all_at(chunk.body(), current_offset as u64)?;
+                             file_internal.bytes_transferred += chunk_size as i64;
+ 
+@@ -1092,7 +1108,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+                                 true,
+                             )
+                             .await;
+-                        } else if (chunk.flags() & 1) == 1 {
++                        }
++                        if (chunk.flags() & 1) == 1 {
++                            let file_internal = self.state.transferred_files.get_mut(&payload_id).ok_or_else(|| anyhow!("Unknown file payload"))?;
++                            if file_internal.bytes_transferred != file_internal.total_size { return Err(anyhow!("Incomplete payload")); }
++                            if let Some(file) = &file_internal.file { file.sync_all()?; }
+                             self.state.transferred_files.remove(&payload_id);
+                             if self.state.transferred_files.is_empty() {
+                                 info!("Transfer finished");
+@@ -1323,15 +1343,20 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+             let mut files_name = Vec::with_capacity(introduction.file_metadata.len());
+             let mut total_bytes: u64 = 0;
+ 
++            if introduction.file_metadata.len() > 512 { return Err(anyhow!("Too many attachments")); }
++            std::fs::create_dir_all(&self.destination)?;
+             for file in &introduction.file_metadata {
+-                let resolved_name = dest_file_name(file.name(), file.mime_type());
++                validate_received_name(file.name())?;
++                if file.size() < 0 || file.size() > 16_i64 * 1024 * 1024 * 1024 { return Err(anyhow!("Attachment too large")); }
++                if self.state.transferred_files.contains_key(&file.payload_id()) { return Err(anyhow!("Duplicate payload ID")); }
++                let resolved_name = file.name().to_string();
+                 info!("File name: {} (as {})", file.name(), resolved_name);
+ 
+-                let mut dest = get_download_dir();
++                let mut dest = self.destination.clone();
+                 dest.push(&resolved_name);
+ 
+                 info!("Destination: {:?}", dest);
+-                if dest.exists() {
++                if dest.exists() || files_name.iter().any(|n: &String| n.eq_ignore_ascii_case(&resolved_name)) {
+                     let mut counter = 1;
+                     dest.pop();
+ 
+@@ -1361,7 +1386,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+                         };
+ 
+                         dest.push(incremented_file_path);
+-                        if !dest.exists() {
++                        if !dest.exists() && !files_name.iter().any(|n: &String| n.eq_ignore_ascii_case(&dest.file_name().unwrap().to_string_lossy())) {
+                             break;
+                         }
+                         dest.pop();
+@@ -1371,6 +1396,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+                     info!("New destination: {:?}", dest);
+                 }
+ 
++                let info_name = dest.file_name().ok_or_else(|| anyhow!("Missing name"))?.to_string_lossy().into_owned();
+                 let info = InternalFileInfo {
+                     payload_id: file.payload_id(),
+                     file_url: dest,
+@@ -1379,8 +1405,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+                     file: None,
+                 };
+                 total_bytes += info.total_size as u64;
++                if total_bytes > 16_u64 * 1024 * 1024 * 1024 { return Err(anyhow!("Batch too large")); }
+                 self.state.transferred_files.insert(file.payload_id(), info);
+-                files_name.push(resolved_name.clone());
++                files_name.push(info_name);
+             }
+ 
+             let metadata = TransferMetadata {
+@@ -1389,7 +1416,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+                 payload_kind: TransferPayloadKind::Files,
+                 payload_preview: Default::default(),
+                 payload: Some(TransferPayload::Files(files_name)),
+-                destination: Some(get_download_dir().to_string_lossy().into_owned()),
++                destination: Some(self.destination.to_string_lossy().into_owned()),
+                 pin_code: self.state.pin_code.clone(),
+                 total_bytes,
+                 ack_bytes: Default::default(),
+@@ -1530,7 +1557,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+         for id in ids {
+             let mfi = self.state.transferred_files.get_mut(&id).unwrap();
+ 
+-            let file = File::create(&mfi.file_url)?;
++            let file = std::fs::OpenOptions::new().create_new(true).write(true).open(&mfi.file_url)?;
+             info!("Created file: {:?}", &file);
+             mfi.file = Some(file);
+         }
+@@ -1593,21 +1620,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> InboundRequest<S> {
+             .ec_p256_public_key
+             .ok_or_else(|| anyhow!("Missing required fields"))?;
+ 
+-        let mut bytes = vec![0x04];
+-        // Ensure no more than 32 bytes for the keys
+-        if peer_p256_key.x.len() > 32 {
+-            bytes.extend_from_slice(&peer_p256_key.x[peer_p256_key.x.len() - 32..]);
+-        } else {
+-            bytes.extend_from_slice(&peer_p256_key.x);
+-        }
+-        if peer_p256_key.y.len() > 32 {
+-            bytes.extend_from_slice(&peer_p256_key.y[peer_p256_key.y.len() - 32..]);
+-        } else {
+-            bytes.extend_from_slice(&peer_p256_key.y);
+-        }
+-
++        let bytes = crate::utils::p256_sec1(&peer_p256_key.x, &peer_p256_key.y)?;
+         let encoded_point = EncodedPoint::from_bytes(bytes)?;
+-        let peer_key = PublicKey::from_encoded_point(&encoded_point).unwrap();
++        let peer_key = Option::<PublicKey>::from(PublicKey::from_encoded_point(&encoded_point))
++            .ok_or_else(|| anyhow!("Invalid peer curve point"))?;
+         let priv_key = self.state.private_key.as_ref().unwrap();
+ 
+         let dhs = diffie_hellman(priv_key.to_nonzero_scalar(), peer_key.as_affine());
+@@ -2227,3 +2243,194 @@ impl InboundRequest<crate::hdl::MigratableStream> {
+         Ok(())
+     }
+ }
++
++// Windows BLE bridge to local Wi-Fi Direct GO, adapted from open-quickshare.
++impl InboundRequest<TcpStream> {
++    async fn drain_prior_channel(&mut self) -> Result<(), anyhow::Error> {
++        use location_nearby_connections::bandwidth_upgrade_negotiation_frame::EventType;
++
++        self.encrypt_and_send(&Self::bwu_frame(
++            EventType::LastWriteToPriorChannel,
++            None,
++            None,
++        ))
++        .await?;
++        let deadline = tokio::time::Instant::now() + Duration::from_secs(25);
++        let mut peer_last_write = false;
++        let mut peer_safe_to_close = false;
++        while !(peer_last_write && peer_safe_to_close) {
++            let offline = match tokio::time::timeout_at(
++                deadline,
++                self.read_encrypted_offline_frame(),
++            )
++            .await
++            {
++                Ok(Ok(f)) => f,
++                Ok(Err(e)) => {
++                    debug!("BWU drain: prior channel ended ({e})");
++                    return Err(anyhow!("Prior channel ended before upgrade confirmation"));
++                }
++                Err(_) => {
++                    warn!("BWU drain: deadline reached; proceeding with the swap");
++                    return Err(anyhow!("Prior channel upgrade drain timed out"));
++                }
++            };
++            match offline.v1.as_ref().map(|v| v.r#type()) {
++                Some(
++                    location_nearby_connections::v1_frame::FrameType::BandwidthUpgradeNegotiation,
++                ) => {
++                    let event = offline
++                        .v1
++                        .as_ref()
++                        .and_then(|v| v.bandwidth_upgrade_negotiation.as_ref())
++                        .map(|b| b.event_type());
++                    match event {
++                        Some(EventType::LastWriteToPriorChannel) => {
++                            debug!("BWU drain: peer LAST_WRITE → sending SAFE_TO_CLOSE");
++                            peer_last_write = true;
++                            let _ = self
++                                .encrypt_and_send(&Self::bwu_frame(
++                                    EventType::SafeToClosePriorChannel,
++                                    None,
++                                    None,
++                                ))
++                                .await;
++                        }
++                        Some(EventType::SafeToClosePriorChannel) => {
++                            debug!("BWU drain: peer SAFE_TO_CLOSE");
++                            peer_safe_to_close = true;
++                        }
++                        other => debug!("BWU drain: event {other:?}"),
++                    }
++                }
++                Some(location_nearby_connections::v1_frame::FrameType::KeepAlive) => {
++                    // Never write to a channel we already LAST_WRITE'd.
++                }
++                _ => {
++                    // In-flight payload (and any late handshake frames): process
++                    // so nothing is lost across the switch.
++                    if let Err(e) = self.process_offline_frame(offline).await {
++                        return Err(e);
++                    }
++                }
++            }
++        }
++        Ok(())
++    }
++
++    pub async fn upgrade_windows_hotspot(&mut self, ssid: &str, password: &str, gateway: &str, frequency: i32) -> Result<(), anyhow::Error> {
++        use location_nearby_connections::bandwidth_upgrade_negotiation_frame::EventType;
++        use location_nearby_connections::bandwidth_upgrade_negotiation_frame::UpgradePathInfo;
++        use location_nearby_connections::bandwidth_upgrade_negotiation_frame::upgrade_path_info::{
++            Medium as UpMedium, WifiHotspotCredentials,
++        };
++
++        let listener = tokio::net::TcpListener::bind((gateway, 0)).await?;
++        let port = listener.local_addr()?.port();
++        info!(
++            "BWU: hosting hotspot '{}' (gateway {}:{port}) for the sender to join",
++            ssid, gateway
++        );
++
++        let info = UpgradePathInfo {
++            medium: Some(UpMedium::WifiHotspot.into()),
++            wifi_hotspot_credentials: Some(WifiHotspotCredentials {
++                ssid: Some(ssid.to_string()),
++                password: Some(password.to_string()),
++                port: Some(port as i32),
++                gateway: Some(gateway.to_string()),
++                frequency: Some(frequency),
++            }),
++            supports_client_introduction_ack: Some(true),
++            ..Default::default()
++        };
++        self.encrypt_and_send(&Self::bwu_frame(
++            EventType::UpgradePathAvailable,
++            Some(info),
++            None,
++        ))
++        .await?;
++
++        // The phone must enable its radio, join our network and get DHCP —
++        // allow generously, while keeping the BLE channel read.
++        let deadline = tokio::time::Instant::now() + Duration::from_secs(45);
++        let mut tcp = loop {
++            tokio::select! {
++                accepted = listener.accept() => match accepted {
++                    Ok((s, peer)) => {
++                        info!("BWU: sender joined our hotspot and connected from {peer}");
++                        break s;
++                    }
++                    Err(e) => {
++                        warn!("BWU: accept on the hotspot failed ({e}); staying on BLE");
++                        
++                        return Ok(());
++                    }
++                },
++                frame = self.read_encrypted_offline_frame() => {
++                    let offline = frame?;
++                    let is_upgrade_failure = offline
++                        .v1
++                        .as_ref()
++                        .filter(|v| {
++                            v.r#type()
++                                == location_nearby_connections::v1_frame::FrameType::BandwidthUpgradeNegotiation
++                        })
++                        .and_then(|v| v.bandwidth_upgrade_negotiation.as_ref())
++                        .map(|b| b.event_type() == EventType::UpgradeFailure)
++                        .unwrap_or(false);
++                    if is_upgrade_failure {
++                        warn!("BWU: sender couldn't join our hotspot (UPGRADE_FAILURE); staying on BLE");
++                        
++                        return Ok(());
++                    }
++                    if let Err(e) = self.process_offline_frame(offline).await {
++                        debug!("BWU hotspot wait: error processing frame: {e}");
++                    }
++                }
++                _ = tokio::time::sleep_until(deadline) => {
++                    warn!("BWU: sender never joined our hotspot; staying on BLE");
++                    
++                    return Ok(());
++                }
++            }
++        };
++
++        // The upgrade connection belongs to this transfer, then resumes with its existing keys.
++        let intro = tokio::time::timeout(Duration::from_secs(5), read_frame_from(&mut tcp)).await??;
++        let mut framed = (intro.len() as u32).to_be_bytes().to_vec();
++        framed.extend_from_slice(&intro);
++        if peek_client_introduction(&framed).as_deref() != Some(self.peer_endpoint.as_str()) {
++            return Err(anyhow!("Upgrade endpoint does not match the BLE session"));
++        }
++        send_frame_on(&mut tcp, &Self::bwu_ack_frame().encode_to_vec()).await?;
++
++        // Drain the BLE channel completely, then swap (see drain_prior_channel).
++        self.drain_prior_channel().await?;
++
++        // Tell the phone the prior (BLE) channel is closing, then swap.
++        let disc = OfflineFrame {
++            version: Some(location_nearby_connections::offline_frame::Version::V1.into()),
++            v1: Some(location_nearby_connections::V1Frame {
++                r#type: Some(
++                    location_nearby_connections::v1_frame::FrameType::Disconnection.into(),
++                ),
++                disconnection: Some(location_nearby_connections::DisconnectionFrame {
++                    request_safe_to_disconnect: Some(false),
++                    ack_safe_to_disconnect: Some(false),
++                }),
++                ..Default::default()
++            }),
++        };
++        let _ = self.send_frame(disc.encode_to_vec()).await;
++        tokio::time::sleep(Duration::from_millis(200)).await;
++
++        self.socket = tcp;
++        info!("BWU: upgraded to our hosted hotspot; payload continues over TCP");
++        // Announce ourselves on the new channel (both sides restart keep-alives
++        // after a channel switch); also un-sticks a sender waiting to see the
++        // receiver's traffic before resuming the payload.
++        let _ = self.send_keepalive(false).await;
++        Ok(())
++    }
++}
+diff --git a/core_lib/src/hdl/outbound.rs b/core_lib/src/hdl/outbound.rs
+index 59a360f..64e067d 100644
+--- a/core_lib/src/hdl/outbound.rs
++++ b/core_lib/src/hdl/outbound.rs
+@@ -1,7 +1,7 @@
+ use std::collections::HashMap;
+ use std::fs::File;
+ use std::io::Read;
+-use std::os::unix::fs::MetadataExt;
++
+ use std::path::Path;
+ use std::time::Duration;
+ 
+@@ -56,10 +56,24 @@ const SANITY_DURATION: Duration = Duration::from_micros(10);
+ /// Classifies a transport as low-bandwidth (BLE) or not, and lets a BLE link be
+ /// swapped to a fresh TCP socket during a Wi-Fi bandwidth upgrade. `TcpStream`
+ /// (the Wi-Fi send path) is never low-bandwidth and never swaps.
+-pub(crate) trait WifiUpgradable {
++pub struct HostedWifi {
++    pub ssid: String,
++    pub password: String,
++    pub gateway: std::net::Ipv4Addr,
++    pub frequency: i32,
++}
++pub trait WifiUpgradable {
+     fn is_low_bandwidth(&self) -> bool;
+     /// Replace the underlying transport with `tcp`; returns false if unsupported.
+     fn upgrade_to_tcp(&mut self, tcp: TcpStream) -> bool;
++    fn join_wifi<'a>(&'a mut self, _ssid: String, _password: String, _gateway: String, _port: u16)
++        -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<TcpStream>, anyhow::Error>> + Send + 'a>> {
++        Box::pin(async { Ok(None) })
++    }
++    fn host_wifi<'a>(&'a mut self)
++        -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<HostedWifi>, anyhow::Error>> + Send + 'a>> {
++        Box::pin(async { Ok(None) })
++    }
+ }
+ 
+ impl WifiUpgradable for TcpStream {
+@@ -876,7 +890,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+                             rand::rng().random::<i64>().unsigned_abs() as i64 & i64::MAX,
+                         ),
+                         name: Some(fname.to_os_string().into_string().unwrap()),
+-                        size: Some(fmetadata.size() as i64),
++                        size: Some(fmetadata.len() as i64),
+                         mime_type: Some(ftype),
+                         r#type: Some(meta_type.into()),
+                         // The attachment uuid ("Should be unique across all
+@@ -902,7 +916,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+                         },
+                     );
+                     file_metadata.push(fmeta);
+-                    total_to_send += fmetadata.size();
++                    total_to_send += fmetadata.len();
+                 }
+             }
+         }
+@@ -1197,7 +1211,14 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+                             return self
+                                 .join_and_upgrade(&ssid, &password, &gateway, port as u16)
+                                 .await;
+-                            #[cfg(not(all(feature = "experimental", target_os = "linux")))]
++                            #[cfg(target_os = "windows")]
++                            {
++                                if let Some(tcp) = self.socket.join_wifi(ssid, password, gateway, port as u16).await? {
++                                    return self.finish_upgrade_over(tcp).await;
++                                }
++                                return Ok(false);
++                            }
++                            #[cfg(not(any(target_os = "windows", all(feature = "experimental", target_os = "linux"))))]
+                             return Ok(false);
+                         }
+                         other => {
+@@ -1228,9 +1249,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+                     info!(
+                         "BWU(send): phone requested a role switch (we host); wifi_direct={has_wifi_direct} phone_role={phone_role:?}"
+                     );
+-                    #[cfg(all(feature = "experimental", target_os = "linux"))]
++                    #[cfg(any(all(feature = "experimental", target_os = "linux"), target_os = "windows"))]
+                     return self.host_wifi_upgrade(has_wifi_direct).await;
+-                    #[cfg(not(all(feature = "experimental", target_os = "linux")))]
++                    #[cfg(not(any(all(feature = "experimental", target_os = "linux"), target_os = "windows")))]
+                     return Ok(false);
+                 }
+                 other => {
+@@ -1377,7 +1398,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+     /// to join our network and connect, introduce, drain the BLE channel and
+     /// swap the socket. Mirror of Quick Share for Windows when sender and
+     /// receiver share no LAN. The hotspot lives until the transfer ends.
+-    #[cfg(all(feature = "experimental", target_os = "linux"))]
++    #[cfg(any(all(feature = "experimental", target_os = "linux"), target_os = "windows"))]
+     async fn host_wifi_upgrade(&mut self, wifi_direct: bool) -> Result<bool, anyhow::Error> {
+         use location_nearby_connections::bandwidth_upgrade_negotiation_frame::upgrade_path_info::{
+             Medium as UpMedium, WifiDirectCredentials, WifiHotspotCredentials,
+@@ -1391,7 +1412,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+         } else {
+             UpMedium::WifiHotspot
+         };
+-        let guard = match crate::hdl::start_hotspot().await {
++        #[cfg(all(feature = "experimental", target_os = "linux"))]
++        let hosted = crate::hdl::start_hotspot().await;
++        #[cfg(target_os = "windows")]
++        let hosted = self.socket.host_wifi().await.and_then(|g|g.ok_or_else(||anyhow!("Local Wi-Fi hosting unavailable")));
++        let guard = match hosted {
+             Ok(g) => g,
+             Err(e) => {
+                 warn!("BWU(send): couldn't host a hotspot ({e}); staying on BLE");
+@@ -1409,8 +1434,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+                 return Ok(false);
+             }
+         };
+-        let listener =
+-            tokio::net::TcpListener::bind((guard.gateway, crate::hdl::HOTSPOT_TCP_PORT)).await?;
++        #[cfg(all(feature = "experimental", target_os = "linux"))]
++        let port = crate::hdl::HOTSPOT_TCP_PORT;
++        #[cfg(target_os = "windows")]
++        let port = 0;
++        let listener = tokio::net::TcpListener::bind((guard.gateway, port)).await?;
+         let port = listener.local_addr()?.port();
+         info!(
+             "BWU(send): hosting '{}' as {:?} (gateway {}:{port}); waiting for the phone to join",
+@@ -1480,12 +1508,12 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+         };
+ 
+         // Plaintext CLIENT_INTRODUCTION from the phone → our ACK.
+-        let intro = read_plain_frame(&mut tcp).await?;
+-        if let Ok(f) = OfflineFrame::decode(&*intro) {
+-            debug!(
+-                "BWU(send): hosted-channel intro frame type={:?}",
+-                f.v1.as_ref().map(|v| v.r#type())
+-            );
++        let intro = tokio::time::timeout(Duration::from_secs(8),read_plain_frame(&mut tcp)).await??;
++        let frame=OfflineFrame::decode(&*intro)?;
++        let negotiation=frame.v1.as_ref().and_then(|v|v.bandwidth_upgrade_negotiation.as_ref())
++            .ok_or_else(||anyhow!("Missing hosted-channel introduction"))?;
++        if negotiation.event_type()!=EventType::ClientIntroduction || negotiation.client_introduction.as_ref().is_none_or(|i|i.endpoint_id().is_empty()) {
++            return Err(anyhow!("Invalid hosted-channel introduction"));
+         }
+         send_plain_frame(&mut tcp, &Self::bwu_ack_frame().encode_to_vec()).await?;
+ 
+@@ -1527,7 +1555,8 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+         }
+ 
+         if self.socket.upgrade_to_tcp(tcp) {
+-            self.hotspot_guard = Some(guard);
++            #[cfg(all(feature = "experimental", target_os = "linux"))]
++            { self.hotspot_guard = Some(guard); }
+             info!("BWU(send): upgraded to our hosted Wi-Fi; payload continues over TCP");
+             Ok(true)
+         } else {
+@@ -1708,7 +1737,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+                             };
+ 
+                             info!("> Currently sending {:?}", curr_state.file_url);
+-                            if curr_state.bytes_transferred == curr_state.total_size {
++                            if curr_state.bytes_transferred == curr_state.total_size && curr_state.total_size != 0 {
+                                 debug!("File {current} finished");
+                                 self.update_state(
+                                     |e| {
+@@ -1953,21 +1982,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+             .ec_p256_public_key
+             .ok_or_else(|| anyhow!("Missing required fields"))?;
+ 
+-        let mut bytes = vec![0x04];
+-        // Ensure no more than 32 bytes for the keys
+-        if peer_p256_key.x.len() > 32 {
+-            bytes.extend_from_slice(&peer_p256_key.x[peer_p256_key.x.len() - 32..]);
+-        } else {
+-            bytes.extend_from_slice(&peer_p256_key.x);
+-        }
+-        if peer_p256_key.y.len() > 32 {
+-            bytes.extend_from_slice(&peer_p256_key.y[peer_p256_key.y.len() - 32..]);
+-        } else {
+-            bytes.extend_from_slice(&peer_p256_key.y);
+-        }
+-
++        let bytes = crate::utils::p256_sec1(&peer_p256_key.x, &peer_p256_key.y)?;
+         let encoded_point = EncodedPoint::from_bytes(bytes)?;
+-        let peer_key = PublicKey::from_encoded_point(&encoded_point).unwrap();
++        let peer_key = Option::<PublicKey>::from(PublicKey::from_encoded_point(&encoded_point))
++            .ok_or_else(|| anyhow!("Invalid peer curve point"))?;
+         let priv_key = self.state.private_key.as_ref().unwrap();
+ 
+         let dhs = diffie_hellman(priv_key.to_nonzero_scalar(), peer_key.as_affine());
+@@ -2239,3 +2257,4 @@ impl<S: AsyncRead + AsyncWrite + Unpin + WifiUpgradable> OutboundRequest<S> {
+         tokio::time::sleep(SANITY_DURATION).await;
+     }
+ }
++
+diff --git a/core_lib/src/lib.rs b/core_lib/src/lib.rs
+index 942a4ac..017c8b6 100644
+--- a/core_lib/src/lib.rs
++++ b/core_lib/src/lib.rs
+@@ -50,7 +50,7 @@ pub mod location_nearby_connections {
+ 
+ static CUSTOM_DOWNLOAD: Lazy<RwLock<Option<PathBuf>>> = Lazy::new(|| RwLock::new(None));
+ static DEVICE_NAME: Lazy<RwLock<String>> =
+-    Lazy::new(|| RwLock::new(sys_metrics::host::get_hostname().unwrap_or("Unknown device".into())));
++    Lazy::new(|| RwLock::new(crate::utils::host_name().unwrap_or("Unknown device".into())));
+ 
+ #[derive(Debug)]
+ pub struct RQS {
+@@ -78,7 +78,7 @@ impl Default for RQS {
+             Visibility::Visible,
+             None,
+             None,
+-            Some(sys_metrics::host::get_hostname().unwrap_or("Unknown device".into())),
++            Some(crate::utils::host_name().unwrap_or("Unknown device".into())),
+         )
+     }
+ }
+diff --git a/core_lib/src/utils.rs b/core_lib/src/utils.rs
+index 2651efc..848a9fa 100644
+--- a/core_lib/src/utils.rs
++++ b/core_lib/src/utils.rs
+@@ -281,3 +281,16 @@ mod tests {
+         assert_eq!(parse_info.0, device_type);
+     }
+ }
++
++pub fn host_name() -> Result<String, anyhow::Error> { Ok(std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "Next Share".into())) }
++
++// UKey2 coordinates are signed big-endian integers; SEC1 needs fixed-width unsigned values.
++pub fn p256_sec1(x: &[u8], y: &[u8]) -> Result<[u8; 65], anyhow::Error> {
++    let mut point=[0u8;65];point[0]=4;
++    for (coordinate,start) in [(x,1usize),(y,33usize)] {
++        let unsigned=if coordinate.len()==33 && coordinate[0]==0 {&coordinate[1..]} else {coordinate};
++        if unsigned.is_empty() || unsigned.len()>32 {return Err(anyhow!("Invalid P256 coordinate length"));}
++        point[start+32-unsigned.len()..start+32].copy_from_slice(unsigned);
++    }
++    Ok(point)
++}

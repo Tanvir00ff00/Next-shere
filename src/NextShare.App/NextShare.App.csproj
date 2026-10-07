@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>NextShare</AssemblyName>
+    <Version>0.4.7</Version>
+    <ApplicationIcon>Assets/nextshare.ico</ApplicationIcon>
+    <NativeConfiguration Condition="'$(Configuration)' == 'Release'">release</NativeConfiguration>
+    <NativeConfiguration Condition="'$(NativeConfiguration)' == ''">debug</NativeConfiguration>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../NextShare.Core/NextShare.Core.csproj" />
+    <ProjectReference Include="../NextShare.Windows/NextShare.Windows.csproj" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../NextShare.QuickShare.Native/target/$(NativeConfiguration)/nextshare-quickshare.exe" Link="nextshare-quickshare.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MaterialDesignThemes" Version="5.3.2" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <EmbeddedResource Include="Assets/nextshare-received.wav" LogicalName="NextShare.ReceiveChime" />
+    <EmbeddedResource Include="Assets/nextshare.ico" LogicalName="NextShare.AppIcon" />
+    <Resource Include="Assets/nextshare.ico" />
+    <Resource Include="Assets/nextshare-logo.png" />
+  </ItemGroup>
+</Project>
+

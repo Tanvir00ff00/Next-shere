@@ -1,0 +1,158 @@
+<Window x:Class="NextShare.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:md="http://materialdesigninxaml.net/winfx/xaml/themes"
+ Title="Next Share" Icon="Assets/nextshare.ico" Width="830" Height="560" MinWidth="640" MinHeight="440" WindowStartupLocation="CenterScreen"
+ Style="{StaticResource MaterialDesignWindow}" Background="{DynamicResource Surface}" Foreground="{DynamicResource Ink}" FontFamily="Segoe UI, Nirmala UI" AllowDrop="True" PreviewDragOver="Window_DragOver" PreviewDrop="Window_Drop">
+ <Window.Resources>
+  <Style x:Key="SelectionTile" TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}"><Setter Property="Height" Value="74"/><Setter Property="Margin" Value="4,0"/><Setter Property="Padding" Value="6"/><Setter Property="Background" Value="{DynamicResource SurfaceContainer}"/><Setter Property="Foreground" Value="{DynamicResource Primary}"/><Setter Property="md:ButtonAssist.CornerRadius" Value="16"/></Style>
+  <Style x:Key="SendDeviceButton" TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}"><Setter Property="Height" Value="80"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="14,10"/><Setter Property="Margin" Value="0,0,0,8"/><Setter Property="Background" Value="{DynamicResource SurfaceContainer}"/><Setter Property="md:ButtonAssist.CornerRadius" Value="20"/></Style>
+ </Window.Resources>
+ <md:DialogHost x:Name="MainDialog" CloseOnClickAway="True"><Grid x:Name="Root" Background="{DynamicResource Surface}">
+  <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarColumn" Width="200"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+  <Border x:Name="Sidebar" Background="{DynamicResource SurfaceContainer}" Padding="12,26,12,18"><Grid>
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+   <StackPanel>
+    <StackPanel x:Name="Brand" Orientation="Horizontal" Margin="12,0,0,28"><Image x:Name="BrandLogo" Source="Assets/nextshare-logo.png" Width="28" Height="28" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Next Share Device Link logo"/><TextBlock x:Name="BrandName" Text="Next Share" Margin="10,0,0,0" FontSize="22" FontWeight="SemiBold"/></StackPanel>
+    <RadioButton x:Name="ReceiveNav" Style="{StaticResource NavItem}" GroupName="Navigation" IsChecked="True" Tag="Receive" Checked="Nav_Checked" AutomationProperties.Name="Receive files"><StackPanel Orientation="Horizontal"><md:PackIcon Kind="Wifi" Width="22" Height="22"/><TextBlock Text="Receive" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Margin="18,0,0,0" VerticalAlignment="Center"/></StackPanel></RadioButton>
+    <RadioButton x:Name="SendNav" Style="{StaticResource NavItem}" GroupName="Navigation" Tag="Send" Checked="Nav_Checked" AutomationProperties.Name="Send files"><StackPanel Orientation="Horizontal"><md:PackIcon Kind="Send" Width="22" Height="22"/><TextBlock Text="Send" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Margin="18,0,0,0" VerticalAlignment="Center"/></StackPanel></RadioButton>
+    <RadioButton x:Name="HistoryNav" Style="{StaticResource NavItem}" GroupName="Navigation" Tag="History" Checked="Nav_Checked" AutomationProperties.Name="Transfer history"><StackPanel Orientation="Horizontal"><md:PackIcon Kind="History" Width="22" Height="22"/><TextBlock Text="History" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Margin="18,0,0,0" VerticalAlignment="Center"/></StackPanel></RadioButton>
+    <RadioButton x:Name="SettingsNav" Style="{StaticResource NavItem}" GroupName="Navigation" Tag="Settings" Checked="Nav_Checked" AutomationProperties.Name="Settings"><StackPanel Orientation="Horizontal"><md:PackIcon Kind="CogOutline" Width="22" Height="22"/><TextBlock Text="Settings" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Margin="18,0,0,0" VerticalAlignment="Center"/></StackPanel></RadioButton>
+   </StackPanel>
+   <StackPanel x:Name="SidebarStatus" Grid.Row="2" Margin="16,0">
+    <StackPanel Orientation="Horizontal"><Ellipse Width="7" Height="7" Fill="{Binding PowerBrush}" Margin="0,0,9,0"/><TextBlock Text="{Binding SidebarState}" FontSize="12" Foreground="{DynamicResource Muted}"/></StackPanel>
+    <TextBlock Text="Local. Original quality." FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,9,0,0"/>
+   </StackPanel>
+  </Grid></Border>
+  <Grid x:Name="PageContent" Grid.Column="1" Margin="28,18,28,20">
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+   <Grid Margin="0,0,0,10"><TextBlock Text="{Binding PageTitle}" FontSize="22" VerticalAlignment="Center"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+     <Button Style="{StaticResource RoundIconButton}" Click="History_Click" ToolTip="History" AutomationProperties.Name="Open history"><md:PackIcon Kind="History" Width="21" Height="21"/></Button>
+     <Button Style="{StaticResource RoundIconButton}" Click="ReceiverInfo_Click" ToolTip="Receiver information" AutomationProperties.Name="Receiver information"><md:PackIcon Kind="InformationOutline" Width="21" Height="21"/></Button>
+    </StackPanel>
+   </Grid>
+
+   <Grid Grid.Row="1" x:Name="ReceivePage" Visibility="{Binding ReceiveVisibility}">
+    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Viewbox x:Name="HeroViewport" Stretch="Uniform" StretchDirection="DownOnly" Margin="0,0,0,12" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+    <StackPanel x:Name="ReceiveHero" Width="440" HorizontalAlignment="Center">
+     <Grid x:Name="ReceiverDial" Width="180" Height="180" Margin="0,0,0,10">
+      <Ellipse x:Name="Halo" Fill="{DynamicResource PrimaryContainer}" Margin="26" Opacity="0.45" RenderTransformOrigin="0.5,0.5"><Ellipse.RenderTransform><ScaleTransform x:Name="HaloScale"/></Ellipse.RenderTransform></Ellipse>
+      <Ellipse Stroke="{DynamicResource PrimaryContainer}" StrokeThickness="1.5" Margin="13" Opacity="0.6"/>
+      <Canvas x:Name="Orbit" Width="180" Height="180" RenderTransformOrigin="0.5,0.5" IsHitTestVisible="False"><Canvas.RenderTransform><RotateTransform x:Name="OrbitRotation"/></Canvas.RenderTransform>
+       <Path Data="M 36,36 A 76,76 0 0 1 144,36" Stroke="{DynamicResource Primary}" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0.65"/>
+       <Path Data="M 144,144 A 76,76 0 0 1 36,144" Stroke="{DynamicResource Primary}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0.35"/>
+       <Ellipse Canvas.Left="84" Canvas.Top="8" Width="12" Height="12" Fill="{DynamicResource Primary}"/>
+       <Ellipse Canvas.Left="86" Canvas.Top="164" Width="8" Height="8" Fill="{DynamicResource Primary}" Opacity="0.5"/>
+      </Canvas>
+      <Canvas x:Name="InnerOrbit" Width="180" Height="180" RenderTransformOrigin="0.5,0.5" IsHitTestVisible="False"><Canvas.RenderTransform><RotateTransform x:Name="InnerRotation"/></Canvas.RenderTransform>
+       <Path Data="M 34,90 A 56,56 0 0 1 90,34" Stroke="{DynamicResource Primary}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0.25"/>
+       <Ellipse Canvas.Left="142" Canvas.Top="86" Width="8" Height="8" Fill="{DynamicResource Primary}" Opacity="0.6"/>
+      </Canvas>
+      <Button x:Name="PowerButton" Width="96" Height="96" Click="Power_Click" IsEnabled="{Binding CanToggle}" ToolTip="All receivers on / off" AutomationProperties.Name="All receivers power" Cursor="Hand">
+       <Button.Template><ControlTemplate TargetType="Button"><Grid><Ellipse x:Name="PowerCircle" Fill="{Binding PowerBrush}"/><md:PackIcon Kind="Power" Width="42" Height="42" Foreground="{DynamicResource OnPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="PowerCircle" Property="Opacity" Value="0.86"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="PowerCircle" Property="Stroke" Value="{DynamicResource Ink}"/><Setter TargetName="PowerCircle" Property="StrokeThickness" Value="2"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="PowerCircle" Property="Opacity" Value="0.5"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Button.Template>
+      </Button>
+     </Grid>
+     <TextBlock Text="{Binding ReceiverName}" FontSize="34" FontWeight="SemiBold" HorizontalAlignment="Center" MaxWidth="430" TextTrimming="CharacterEllipsis"/>
+     <TextBlock Text="{Binding StateTitle}" FontSize="14" Foreground="{DynamicResource Primary}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+     <TextBlock Text="{Binding StateDetail}" FontSize="12" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" MaxWidth="430" ToolTip="{Binding StateDetail}"/>
+    </StackPanel></Viewbox>
+    <StackPanel Grid.Row="1">
+     <Border Background="{DynamicResource SurfaceContainer}" CornerRadius="18" Padding="14,8" Margin="0,0,0,10" Visibility="{Binding IncomingVisibility}">
+      <ScrollViewer x:Name="IncomingScroll" MaxHeight="108" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+       <ItemsControl ItemsSource="{Binding Incoming}"><ItemsControl.ItemTemplate><DataTemplate>
+        <Grid Margin="0,5"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+         <ProgressBar Style="{StaticResource MaterialDesignCircularProgressBar}" IsIndeterminate="True" Width="20" Height="20" VerticalAlignment="Center"/>
+         <StackPanel Grid.Column="1"><TextBlock Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/><TextBlock Text="{Binding Device}" FontSize="10" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/><ProgressBar Value="{Binding Percent,Mode=OneWay}" IsIndeterminate="{Binding Indeterminate}" Maximum="100" Height="4" Margin="0,6,0,4"/><TextBlock Text="{Binding Detail}" FontSize="10" Foreground="{DynamicResource Primary}"/></StackPanel>
+        </Grid>
+       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+      </ScrollViewer>
+     </Border>
+     <Border x:Name="LatestCard" Background="{DynamicResource SurfaceContainer}" CornerRadius="20" Padding="16,10" Margin="0,0,0,10" Visibility="{Binding LatestVisibility}"><Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <md:PackIcon Kind="CheckCircleOutline" Width="24" Height="24" Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding LatestName}" FontSize="13" TextTrimming="CharacterEllipsis" ToolTip="{Binding LatestName}"/><TextBlock Text="{Binding LatestDetail}" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+      <Button Grid.Column="2" Style="{StaticResource RoundIconButton}" Click="LatestFile_Click" ToolTip="Show file" AutomationProperties.Name="Show latest file"><md:PackIcon Kind="FolderOpenOutline" Width="20" Height="20"/></Button>
+     </Grid></Border>
+     <Button Style="{StaticResource RoundedOutlineButton}" Click="OpenFolder_Click" HorizontalAlignment="Center" AutomationProperties.Name="Open save folder"><StackPanel Orientation="Horizontal"><md:PackIcon Kind="FolderOutline" Width="18" Height="18" Margin="0,0,9,0"/><TextBlock Text="Open save folder" Foreground="{DynamicResource Primary}"/></StackPanel></Button>
+    </StackPanel>
+   </Grid>
+
+   <ScrollViewer Grid.Row="1" x:Name="SendPage" Visibility="{Binding SendVisibility}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,6,8">
+    <StackPanel>
+     <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding SelectionSummary}" FontSize="14" VerticalAlignment="Center"/><Button Grid.Column="1" Content="Clear" Click="ClearSelection_Click" Style="{StaticResource MaterialDesignFlatButton}" IsEnabled="{Binding CanEditSelection}" Visibility="{Binding SelectionVisibility}"/></Grid>
+     <UniformGrid Columns="4" Margin="-4,0,-4,14">
+      <Button Style="{StaticResource SelectionTile}" Click="SelectFiles_Click" IsEnabled="{Binding CanEditSelection}" AutomationProperties.Name="Select files"><StackPanel><md:PackIcon Kind="FileDocumentOutline" Width="22" Height="22" HorizontalAlignment="Center"/><TextBlock Text="File" HorizontalAlignment="Center" Margin="0,8,0,0" Foreground="{DynamicResource Primary}"/></StackPanel></Button>
+      <Button Style="{StaticResource SelectionTile}" Click="SelectFolder_Click" IsEnabled="{Binding CanEditSelection}" ToolTip="Send a folder as a ZIP file"><StackPanel><md:PackIcon Kind="FolderOutline" Width="22" Height="22" HorizontalAlignment="Center"/><TextBlock Text="Folder" HorizontalAlignment="Center" Margin="0,8,0,0" Foreground="{DynamicResource Primary}"/></StackPanel></Button>
+      <Button Style="{StaticResource SelectionTile}" Click="SelectText_Click" IsEnabled="{Binding CanEditSelection}"><StackPanel><md:PackIcon Kind="Text" Width="22" Height="22" HorizontalAlignment="Center"/><TextBlock Text="Text" HorizontalAlignment="Center" Margin="0,8,0,0" Foreground="{DynamicResource Primary}"/></StackPanel></Button>
+      <Button Style="{StaticResource SelectionTile}" Click="PasteSelection_Click" IsEnabled="{Binding CanEditSelection}" ToolTip="Paste copied files, an image or text"><StackPanel><md:PackIcon Kind="ClipboardOutline" Width="22" Height="22" HorizontalAlignment="Center"/><TextBlock Text="Paste" HorizontalAlignment="Center" Margin="0,8,0,0" Foreground="{DynamicResource Primary}"/></StackPanel></Button>
+     </UniformGrid>
+     <Border x:Name="DropZone" Visibility="{Binding DropHintVisibility}" BorderBrush="{DynamicResource Outline}" BorderThickness="1" CornerRadius="18" Padding="14,13" Margin="0,0,0,12" Background="{DynamicResource Surface}"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center"><md:PackIcon Kind="TrayArrowDown" Width="20" Height="20" Foreground="{DynamicResource Primary}" Margin="0,0,10,0"/><TextBlock Text="Drop files or folders here" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center"/></StackPanel></Border>
+     <ScrollViewer MaxHeight="80" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding SelectionVisibility}" Margin="0,0,0,12"><ItemsControl ItemsSource="{Binding Selection}"><ItemsControl.ItemTemplate><DataTemplate>
+      <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><md:PackIcon Kind="FileOutline" Width="20" Height="20" Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/><StackPanel Grid.Column="1"><TextBlock Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}"/><TextBlock Text="{Binding Detail}" FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/></StackPanel><Button Grid.Column="2" Click="RemoveSelection_Click" Style="{StaticResource RoundIconButton}" ToolTip="Remove file" IsEnabled="{Binding CanEditSelection, RelativeSource={RelativeSource AncestorType=Window}}"><md:PackIcon Kind="Close" Width="18" Height="18"/></Button></Grid>
+     </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+     <Border Background="{DynamicResource SurfaceContainer}" CornerRadius="18" Padding="14" Margin="0,0,0,18"><StackPanel><TextBlock Text="{Binding SendStatus}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Muted}"/><Grid Visibility="{Binding SendingVisibility}" Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><ProgressBar Value="{Binding SendPercent, Mode=OneWay}" Maximum="100" Height="5" VerticalAlignment="Center" Margin="0,0,12,0"/><Button Grid.Column="1" Content="Cancel" Click="CancelSend_Click" Style="{StaticResource MaterialDesignFlatButton}"/></Grid></StackPanel></Border>
+     <Grid Margin="0,0,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Nearby devices" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/><ProgressBar Grid.Column="1" Style="{StaticResource MaterialDesignCircularProgressBar}" IsIndeterminate="True" Width="20" Height="20" Visibility="{Binding ScanningVisibility}" VerticalAlignment="Center" Margin="0,0,8,0"/><Button Grid.Column="2" Click="RefreshDevices_Click" Style="{StaticResource RoundIconButton}" IsEnabled="{Binding CanRefreshDevices}" ToolTip="Refresh nearby devices" AutomationProperties.Name="Refresh devices"><md:PackIcon Kind="Refresh" Width="22" Height="22"/></Button></Grid>
+     <ItemsControl ItemsSource="{Binding NearbyDevices}"><ItemsControl.ItemTemplate><DataTemplate>
+      <Button Click="SendDevice_Click" IsEnabled="{Binding CanSend, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource SendDeviceButton}" ToolTip="Select to send your files"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions><Border Width="38" Height="42" CornerRadius="12" Background="{DynamicResource PrimaryContainer}"><md:PackIcon Kind="{Binding Icon}" Width="24" Height="24" Foreground="{DynamicResource Primary}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0"><TextBlock Text="{Binding Name}" FontSize="16" Foreground="{DynamicResource Ink}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{DynamicResource Muted}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/></StackPanel><md:PackIcon Grid.Column="2" Kind="ArrowRight" Width="20" Height="20" VerticalAlignment="Center" Foreground="{DynamicResource Primary}"/></Grid></Button>
+     </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+     <StackPanel Visibility="{Binding DeviceEmptyVisibility}" HorizontalAlignment="Center" Margin="0,16,0,18"><md:PackIcon Kind="Radar" Width="36" Height="36" Foreground="{DynamicResource Outline}" HorizontalAlignment="Center"/><TextBlock Text="{Binding DeviceEmptyText}" FontSize="13" Foreground="{DynamicResource Muted}" Margin="0,10,0,0"/></StackPanel>
+     <TextBlock Text="{Binding DiscoveryStatus}" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" TextAlignment="Center" Margin="8,8,8,12"/>
+    </StackPanel>
+   </ScrollViewer>
+
+   <Grid Grid.Row="1" x:Name="HistoryPage" Visibility="{Binding HistoryVisibility}">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Grid Margin="0,2,0,18"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/></Grid.ColumnDefinitions>
+     <TextBox Text="{Binding HistoryQuery, UpdateSourceTrigger=PropertyChanged}" md:HintAssist.Hint="Search files or device" Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="13" Margin="0,0,12,0" AutomationProperties.Name="Search transfer history"/>
+     <ComboBox Grid.Column="1" ItemsSource="{Binding HistoryRoutes}" SelectedItem="{Binding HistoryRoute}" Style="{StaticResource MaterialDesignOutlinedComboBox}" md:HintAssist.Hint="Transfer type" AutomationProperties.Name="Filter transfer type"/>
+    </Grid>
+    <Grid Grid.Row="1" Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <TextBlock Text="{Binding HistoryCount}" Foreground="{DynamicResource Muted}" FontSize="12" VerticalAlignment="Center"/>
+     <Button Grid.Column="1" Style="{StaticResource RoundedOutlineButton}" Click="ClearHistory_Click" IsEnabled="{Binding HasHistory}" ToolTip="Clear the list; saved files stay in their folder" AutomationProperties.Name="Clear transfer history"><StackPanel Orientation="Horizontal"><md:PackIcon Kind="DeleteOutline" Width="17" Height="17" Margin="0,0,8,0"/><TextBlock Text="Clear history" Foreground="{DynamicResource Primary}"/></StackPanel></Button>
+    </Grid>
+    <StackPanel Grid.Row="2" Visibility="{Binding HistoryEmptyVisibility}" HorizontalAlignment="Center" VerticalAlignment="Center"><md:PackIcon Kind="History" Width="48" Height="48" Foreground="{DynamicResource Outline}" HorizontalAlignment="Center"/><TextBlock Text="{Binding HistoryEmptyText}" FontSize="15" Foreground="{DynamicResource Muted}" Margin="0,14,0,0"/><TextBlock Text="Received files will appear here." FontSize="12" Foreground="{DynamicResource Muted}" HorizontalAlignment="Center" Margin="0,7,0,0"/></StackPanel>
+    <ListBox Grid.Row="2" x:Name="FileList" ItemsSource="{Binding HistoryView}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" MouseDoubleClick="File_DoubleClick" AutomationProperties.Name="Received file history">
+     <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource MaterialDesignListBoxItem}"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,3"/></Style></ListBox.ItemContainerStyle>
+     <ListBox.ItemTemplate><DataTemplate><Border Background="{DynamicResource SurfaceContainer}" CornerRadius="18" Padding="14,12"><Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/><ColumnDefinition Width="42"/></Grid.ColumnDefinitions>
+      <Border Background="{DynamicResource PrimaryContainer}" CornerRadius="13" Width="36" Height="40" HorizontalAlignment="Left"><md:PackIcon Kind="{Binding Icon}" Width="22" Height="22" Foreground="{DynamicResource Primary}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Name}" FontSize="14" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/><TextBlock Text="{Binding HistoryDetail}" Foreground="{DynamicResource Muted}" FontSize="11" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+      <Button Grid.Column="2" Style="{StaticResource RoundIconButton}" Click="FileMenu_Click" ToolTip="File actions" AutomationProperties.Name="File actions"><md:PackIcon Kind="DotsVertical" Width="20" Height="20"/></Button>
+     </Grid></Border></DataTemplate></ListBox.ItemTemplate>
+    </ListBox>
+   </Grid>
+
+   <ScrollViewer Grid.Row="1" x:Name="SettingsPage" Visibility="{Binding SettingsVisibility}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="0,2,8,12">
+     <Border Background="{DynamicResource SurfaceContainer}" CornerRadius="24" Padding="22,20" Margin="0,0,0,16"><StackPanel>
+      <TextBlock Text="Appearance" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,18"/>
+      <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/></Grid.ColumnDefinitions><StackPanel VerticalAlignment="Center"><TextBlock Text="Theme" FontSize="14"/><TextBlock Text="Follow your desktop, or choose a theme." Style="{StaticResource BodyText}" FontSize="11" Margin="0,4,16,0"/></StackPanel><ComboBox Grid.Column="1" ItemsSource="{Binding Themes}" SelectedItem="{Binding ThemeMode}" AutomationProperties.Name="Application theme" Style="{StaticResource MaterialDesignOutlinedComboBox}"/></Grid>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/></Grid.ColumnDefinitions><TextBlock Text="Color" FontSize="14" VerticalAlignment="Center"/><ComboBox Grid.Column="1" ItemsSource="{Binding Accents}" SelectedItem="{Binding Accent}" Style="{StaticResource MaterialDesignOutlinedComboBox}" AutomationProperties.Name="Accent color"/></Grid>
+     </StackPanel></Border>
+     <Border Background="{DynamicResource SurfaceContainer}" CornerRadius="24" Padding="22,20" Margin="0,0,0,16"><StackPanel>
+      <TextBlock Text="Notifications" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,16"/>
+      <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="File received notification" FontSize="14"/><TextBlock Text="Two-second alerts when receiving starts and files are saved." Style="{StaticResource BodyText}" FontSize="11" Margin="0,5,18,0"/></StackPanel><ToggleButton Grid.Column="1" IsChecked="{Binding DesktopNotifications}" Style="{StaticResource MaterialDesignSwitchToggleButton}" VerticalAlignment="Center" AutomationProperties.Name="File received desktop notifications"/></Grid>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="Signature sound" FontSize="14"/><TextBlock Text="Next Share's own short chime." Style="{StaticResource BodyText}" FontSize="11" Margin="0,5,18,0"/></StackPanel><ToggleButton Grid.Column="1" IsChecked="{Binding ReceiveSound}" Style="{StaticResource MaterialDesignSwitchToggleButton}" VerticalAlignment="Center" AutomationProperties.Name="Next Share receive sound"/></Grid>
+      <ComboBox Margin="0,18,0,0" ItemsSource="{Binding SoundOutputs}" SelectedItem="{Binding SoundOutput}" DisplayMemberPath="Name" md:HintAssist.Hint="Sound output" Style="{StaticResource MaterialDesignOutlinedComboBox}" AutomationProperties.Name="Notification sound output"/>
+      <StackPanel Orientation="Horizontal" Margin="-8,12,0,0"><Button Content="Preview notification" Click="PreviewFeedback_Click" Style="{StaticResource MaterialDesignFlatButton}"/><Button Content="Refresh outputs" Click="RefreshSoundOutputs_Click" Style="{StaticResource MaterialDesignFlatButton}"/></StackPanel>
+      <TextBlock Text="{Binding SoundStatus}" Style="{StaticResource BodyText}" FontSize="11" TextWrapping="Wrap"/>
+     </StackPanel></Border>
+     <Border Background="{DynamicResource SurfaceContainer}" CornerRadius="24" Padding="22,20" Margin="0,0,0,16"><StackPanel>
+      <TextBlock Text="Receiving" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,16"/>
+      <TextBox x:Name="DeviceNameInput" Text="{Binding DeviceNameDraft,UpdateSourceTrigger=PropertyChanged}" MaxLength="32" md:HintAssist.Hint="Device name" Style="{StaticResource MaterialDesignOutlinedTextBox}" IsEnabled="{Binding CanChangeReceiver}" AutomationProperties.Name="Device name"/>
+      <TextBlock Text="Uses your Windows computer name by default." Style="{StaticResource BodyText}" FontSize="11" Margin="0,7,0,0"/>
+      <StackPanel Orientation="Horizontal" Margin="-8,6,0,16"><Button Content="Save name" Click="SaveDeviceName_Click" Style="{StaticResource MaterialDesignFlatButton}" IsEnabled="{Binding CanChangeReceiver}"/><Button Content="Use Windows name" Click="ResetDeviceName_Click" Style="{StaticResource MaterialDesignFlatButton}" IsEnabled="{Binding CanChangeReceiver}"/></StackPanel>
+      <TextBlock Text="Save files to" FontSize="14"/>
+      <Grid Margin="0,10,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding SaveFolder}" Style="{StaticResource BodyText}" FontSize="12" Margin="0,0,18,0" VerticalAlignment="Center"/><Button Grid.Column="1" Content="Choose folder" Click="ChooseFolder_Click" Style="{StaticResource RoundedOutlineButton}" IsEnabled="{Binding CanChangeReceiver}"/></Grid>
+      <TextBlock Text="Files save directly here, at their original quality." Style="{StaticResource BodyText}" FontSize="11"/>
+      <Border Background="{DynamicResource Outline}" Height="1" Opacity="0.4" Margin="0,20,0,18"/>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="Keep running in the tray" FontSize="14"/><TextBlock Text="Receive files when the window is closed." Style="{StaticResource BodyText}" FontSize="11" Margin="0,5,18,0"/></StackPanel><ToggleButton Grid.Column="1" IsChecked="{Binding CloseToTray}" Style="{StaticResource MaterialDesignSwitchToggleButton}" VerticalAlignment="Center" AutomationProperties.Name="Keep running in system tray"/></Grid>
+     </StackPanel></Border>
+     <Border Background="{DynamicResource SurfaceContainer}" CornerRadius="24" Padding="22,20"><StackPanel><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Next Share" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/><Border Grid.Column="1" Background="{DynamicResource PrimaryContainer}" CornerRadius="12" Padding="12,5" Margin="12,0,0,0"><TextBlock x:Name="AppVersionText" Text="{Binding AppVersion}" FontSize="12" Foreground="{DynamicResource Primary}" AutomationProperties.Name="App version"/></Border></Grid><TextBlock Text="Material 3 · local file sharing" Style="{StaticResource BodyText}" FontSize="12" Margin="0,6,0,0"/><TextBlock Text="{Binding CapabilityNote}" Style="{StaticResource BodyText}" FontSize="11" Margin="0,12,0,0" ToolTip="{Binding CapabilityDetail}"/><Button Content="Receiver details" Click="ReceiverInfo_Click" HorizontalAlignment="Left" Margin="-8,12,0,0" Style="{StaticResource MaterialDesignFlatButton}"/></StackPanel></Border>
+    </StackPanel>
+   </ScrollViewer>
+  </Grid>
+  <md:Snackbar x:Name="Toast" Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="20" Background="#26342C" Foreground="#E1ECE5" CornerRadius="16" ActionButtonStyle="{StaticResource ToastAction}"/>
+ </Grid></md:DialogHost>
+</Window>
+

@@ -1,0 +1,22 @@
+[package]
+name = "nextshare-quickshare"
+version = "0.2.0"
+edition = "2024"
+license = "GPL-3.0-only"
+
+[dependencies]
+rqs_lib = { path = "../../third_party/open-quickshare/core_lib", default-features = false }
+anyhow = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+rand = "0.9"
+base64 = "0.22"
+mdns-sd = { git = "https://github.com/Martichou/mdns-sd", branch = "unsolicited" }
+uuid = { version = "1", features = ["v4"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+opt-level = 2

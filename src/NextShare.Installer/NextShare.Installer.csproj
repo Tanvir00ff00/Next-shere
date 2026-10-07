@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup>
+  <OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF>
+  <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><Version>0.4.7</Version>
+  <AssemblyName>NextShare.Setup</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest>
+  <ApplicationIcon>../NextShare.App/Assets/nextshare.ico</ApplicationIcon>
+ </PropertyGroup>
+ <ItemGroup><Resource Include="../NextShare.App/Assets/nextshare-logo.png" Link="Assets/logo.png"/></ItemGroup>
+ <ItemGroup Condition="'$(EnginePath)' != ''">
+  <EmbeddedResource Include="$(EnginePath)" LogicalName="NextShare.Setup.Engine"/>
+  <EmbeddedResource Include="$(EngineHashPath)" LogicalName="NextShare.Setup.EngineHash"/>
+ </ItemGroup>
+</Project>
+

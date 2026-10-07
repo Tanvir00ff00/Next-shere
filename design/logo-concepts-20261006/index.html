@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Next Share · Logo concepts</title>
+<style>
+:root{font-family:Segoe UI,Arial,sans-serif;color:#163c36;background:#f4faf7;color-scheme:light}*{box-sizing:border-box}body{margin:0;padding:32px}main{max-width:1050px;margin:auto}header{display:flex;align-items:center;justify-content:space-between;gap:16px}h1{font-size:28px;letter-spacing:-1px;margin:4px 0}p{color:#58726b;margin:8px 0 24px;font-size:14px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{background:#fff;border:2px solid transparent;border-radius:24px;padding:16px;cursor:pointer;box-shadow:0 4px 22px #173b3608;transition:border .15s,transform .15s}.card:hover{transform:translateY(-3px)}.card:focus-visible{outline:3px solid #007d72;outline-offset:4px}.card.selected{border-color:#008477}.hero{display:block;width:100%;height:205px;object-fit:contain}h2{font-size:16px;margin:12px 0}.small{display:flex;align-items:center;gap:10px;height:42px}a,button{color:#007d72}a{margin-left:auto;font-size:12px;text-decoration:none}button{background:#d6ede5;border:0;padding:10px 16px;border-radius:30px;cursor:pointer;font:inherit}footer{margin:22px 0;font-size:14px;min-height:24px}.dark{background:#12221f;color:#e0f2eb;color-scheme:dark}.dark .card{background:#203630}.dark p{color:#a4bbb3}.dark a{color:#a0d9c8}.dark button{background:#31544a;color:#cff4e7}@media(max-width:780px){.grid{grid-template-columns:repeat(2,1fr)}body{padding:20px}.hero{height:170px}}@media(max-width:480px){.grid{grid-template-columns:1fr}}
+</style>
+<main><header><h1>Next Share</h1><button id="theme" type="button">Dark preview</button></header><p>Six logo directions. Select a concept and tell me its number.</p><div class="grid" id="grid"></div><footer id="selection" aria-live="polite">Select your favourite · 1–6</footer></main>
+<script>
+const concepts=[['01-n-portal','N Portal'],['02-twin-arrows','Twin Arrows'],['03-orbit','Orbit Link'],['04-folded-file','File Spark'],['05-swift-wing','Swift Wing'],['06-device-link','Device Link']];
+for(const [i,[file,name]] of concepts.entries()){
+ const card=document.createElement('article');card.className='card';card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-pressed','false');card.setAttribute('aria-label',`Select ${i+1}, ${name}`);
+ card.innerHTML=`<img class="hero" src="${file}.png" alt="${name} logo concept"><h2>${i+1} · ${name}</h2><div class="small"><img width="24" height="24" src="${file}.png" alt="24 pixel preview"><img width="32" height="32" src="${file}.png" alt="32 pixel preview"><a href="${file}.png" download>PNG ↗</a></div>`;
+ const choose=()=>{document.querySelectorAll('.card').forEach(c=>{c.classList.remove('selected');c.setAttribute('aria-pressed','false')});card.classList.add('selected');card.setAttribute('aria-pressed','true');document.getElementById('selection').textContent=`Your choice: ${i+1} · ${name} — tell me “use logo ${i+1}”.`};
+ card.addEventListener('click',e=>{if(!e.target.closest('a'))choose()});card.addEventListener('keydown',e=>{if(e.target===card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();choose()}});document.getElementById('grid').append(card);
+}
+document.getElementById('theme').onclick=()=>{const dark=document.documentElement.classList.toggle('dark');document.getElementById('theme').textContent=dark?'Light preview':'Dark preview'};
+</script></html>
