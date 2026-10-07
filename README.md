@@ -61,7 +61,7 @@ These previews come from isolated application smoke tests. The nearby software r
 
 ## Get started
 
-1. Download `NextShare-Setup-0.4.7.exe` from the [latest release](https://github.com/Tanvir00ff00/Next-shere/releases/latest).
+1. Download `NextShare-Setup-0.4.8.exe` from the [latest release](https://github.com/Tanvir00ff00/Next-shere/releases/latest).
 2. Run the installer, approve the Windows administrator prompt and select **Install**.
 3. Open **Next Share** from the desktop or Start menu. Receiving is already on.
 4. In **Settings**, choose your save folder, theme and notification preferences.
@@ -79,7 +79,7 @@ The installer includes the .NET runtime, native protocol engine and Windows Offl
 | --- | --- |
 | **Bluetooth receive** | Implemented through RFCOMM/OBEX Object Push; JPEG receiving has been validated on an Android phone. |
 | **Bluetooth send** | Implemented. The recipient must support OBEX Object Push; Windows pairing may be required. |
-| **Quick Share** | Independent receiver and sender using BLE discovery, encrypted Nearby connections and local Wi-Fi paths. Google's Windows app is not required. Latest BLE fixes still need physical Google and Samsung phone validation. |
+| **Quick Share** | Independent receiver and sender using BLE discovery, encrypted Nearby connections and local Wi-Fi paths. Google's Windows app is not required. The operator reported successful Google and Samsung phone transfers on 0.4.8; compatibility still depends on the device and supported transport. |
 | **AirDrop / iPhone Bluetooth file receiving** | Not supported in this build. |
 | **QR / browser-link sharing** | Not implemented yet. |
 
@@ -140,24 +140,25 @@ dotnet run --project tests/NextShare.Windows.Tests -c Release
 .\tools\Build-Installer.ps1
 ```
 
-The installer is written to `artifacts/NextShare-Setup-0.4.7.exe`. The build script checks the service schema, signature sound, installer status handling, application tests and packaged UI/protocol smoke checks. Building does not install the service, firewall rules or startup entry.
+The installer is written to `artifacts/NextShare-Setup-0.4.8.exe`. The build script checks the service schema, signature sound, installer status handling, application tests and packaged UI/protocol smoke checks. Building does not install the service, firewall rules or startup entry.
 
 The protocol core is already patched. Do not rerun the historical patch scripts. For a Debug app build, build the native Debug backend first.
 
 ### Verification
 
-The published 0.4.7 release was checked with:
+The 0.4.8 release was checked with:
 
 | Check | Result |
 | --- | --- |
-| Core tests from a clean clone | **60 passed** |
-| Windows Offline Guard tests from a clean clone | **7 passed** |
+| Core tests | **60 passed** |
+| Windows Offline Guard tests | **7 passed** |
 | Offline native dependency resolution | **180 packages resolved** |
 | Encrypted loopback transfers | **4 concurrent senders, 8 files; hashes and flat destinations verified** |
 | Packaged application checks | **Receive, Send, history, themes, resize, notifications and startup passed** |
-| Release files | **Uploaded SHA-256 checksums verified** |
+| Physical phone and installation checks | **Operator-reported Google/Samsung sharing, large files, two simultaneous phones, installation, reboot and startup passed** |
+| Release files | **SHA-256 checksums supplied** |
 
-These are software and packaging checks, not a claim of compatibility with every phone. Real-device Google/Samsung Quick Share verification remains pending for the latest BLE delivery changes.
+Software checks and operator-reported phone results are recorded separately in [verification notes](docs/verification.md). Direct Google phone receipts were also checked against their saved-file hashes. These results do not guarantee compatibility with every phone; the earlier BLE bootstrap error was not independently traced through a later BLE-only test.
 
 ## Project map
 

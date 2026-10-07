@@ -3,7 +3,7 @@ Unicode true
 !include "x64.nsh"
 !include "WinVer.nsh"
 !ifndef VERSION
- !define VERSION "0.4.7"
+ !define VERSION "0.4.8"
 !endif
 !ifndef RELEASE_DIR
  !error "Pass RELEASE_DIR to the compiler"

@@ -66,6 +66,7 @@ internal sealed class QuickShareReceiverService(InboxStore store, string dataRoo
             info.ArgumentList.Add("--staging"); info.ArgumentList.Add(staging);
             info.ArgumentList.Add("--name"); info.ArgumentList.Add(name);
             if (!useRadio) info.ArgumentList.Add("--loopback-only");
+            if (useRadio && App.Arguments.Contains("--quickshare-ble-only")) info.ArgumentList.Add("--ble-discovery-only");
             process = Process.Start(info) ?? throw new IOException("Quick Share backend start failed");
             var child = process; var token = stop.Token;
             reader = Task.Run(async () =>
@@ -80,6 +81,7 @@ internal sealed class QuickShareReceiverService(InboxStore store, string dataRoo
                         switch (message.GetProperty("type").GetString())
                         {
                             case "listening": ready.TrySetResult(message.Clone()); break;
+                            case "connection": Activity?.Invoke("Quick Share connection opened over " + message.GetProperty("transport").GetString()); break;
                             case "need-hotspot": hotspotRequest ??= ProvideHotspotAsync(child, token); break;
                             case "complete":
                                 Processing?.Invoke(message.GetProperty("id").GetString()!);

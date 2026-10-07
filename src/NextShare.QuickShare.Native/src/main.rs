@@ -38,7 +38,10 @@ async fn main() -> Result<()> {
     let (hotspot_tx, hotspot_rx) = watch::channel(HotspotState::Waiting);
     let endpoint: [u8; 4] = rand::rng().sample_iter(Alphanumeric).take(4).collect::<Vec<u8>>().try_into().unwrap();
     let endpoint_id = String::from_utf8(endpoint.to_vec())?;
-    let daemon = if loopback_only {None}else{Some(mdns_sd::ServiceDaemon::new()?)};
+    // Diagnostic mode isolates the BLE bootstrap without publishing a second,
+    // direct LAN discovery route. The TCP listener remains for a later Wi-Fi upgrade.
+    let ble_discovery_only = std::env::args().any(|a| a == "--ble-discovery-only");
+    let daemon = if loopback_only || ble_discovery_only {None}else{Some(mdns_sd::ServiceDaemon::new()?)};
     let endpoint_info = rqs_lib::utils::gen_mdns_endpoint_info(3, &name);
     let info = mdns_sd::ServiceInfo::new("_FC9F5ED42C8A._tcp.local.", &rqs_lib::utils::gen_mdns_name(endpoint), &format!("nextshare-{endpoint_id}.local."), "", port,
         &[("n", endpoint_info.clone())][..])?.enable_addr_auto(mdns_sd::AddrType::V4);
@@ -104,7 +107,7 @@ async fn main() -> Result<()> {
         input_stop.cancel();
     });
     let (advert, header) = advertisement::encode(endpoint, &endpoint_info);
-    emit(json!({"type":"listening","name":name,"port":port,"bridgePort":bridge_port,"endpoint":endpoint_id,"endpointInfo":endpoint_info,"advertisement":STANDARD.encode(advert),"advertisementHeader":STANDARD.encode(header),"googleRequired":false,"transport":"WiFi LAN + Windows GATT bridge + WiFi Direct upgrade","sameNetworkRequired":false,"phoneInteroperabilityVerified":false}));
+    emit(json!({"type":"listening","name":name,"port":port,"bridgePort":bridge_port,"endpoint":endpoint_id,"endpointInfo":endpoint_info,"advertisement":STANDARD.encode(advert),"advertisementHeader":STANDARD.encode(header),"googleRequired":false,"transport":"WiFi LAN + Windows GATT bridge + WiFi Direct upgrade","lanDiscovery":!loopback_only && !ble_discovery_only,"sameNetworkRequired":false,"phoneInteroperabilityVerified":false}));
     loop {
         tokio::select! {
             _ = stop.cancelled() => break,
@@ -112,6 +115,7 @@ async fn main() -> Result<()> {
                 let (socket, _) = accepted?;
                 let Ok(permit) = slots.clone().try_acquire_owned() else { drop(socket); emit(json!({"type":"busy"})); continue; };
                 let id = uuid::Uuid::new_v4().simple().to_string();
+                emit(json!({"type":"connection","id":id,"transport":"Wi-Fi LAN"}));
                 let sender = messages.clone();
                 let cancellation = stop.clone();
                 let hotspot = hotspot_rx.clone();
@@ -121,6 +125,7 @@ async fn main() -> Result<()> {
                 let (socket, _) = accepted?;
                 let Ok(permit) = slots.clone().try_acquire_owned() else { drop(socket); continue; };
                 let id = uuid::Uuid::new_v4().simple().to_string();
+                emit(json!({"type":"connection","id":id,"transport":"BLE bridge"}));
                 let sender = messages.clone(); let cancellation = stop.clone(); let hotspot = hotspot_rx.clone();
                 tokio::spawn(async move { let _permit = permit; receive(socket, id, sender, cancellation, hotspot, true).await; });
             }

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
  <PropertyGroup>
   <OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF>
-  <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><Version>0.4.7</Version>
+  <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><Version>0.4.8</Version>
   <AssemblyName>NextShare.Setup</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest>
   <ApplicationIcon>../NextShare.App/Assets/nextshare.ico</ApplicationIcon>
  </PropertyGroup>

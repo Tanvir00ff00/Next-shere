@@ -20,6 +20,7 @@ internal sealed class QuickShareGattService
     private byte[] advertisement = [];
     private int port;
     private BleNotificationPump<GattSubscribedClient>? notificationPump;
+    private GattSubscribedClient[] subscriptions = [];
     private readonly ConcurrentDictionary<string, Peer> peers = new();
     private readonly object peerGate = new();
     private int metadataWarning;
@@ -47,10 +48,12 @@ internal sealed class QuickShareGattService
             notify = await CreateCharacteristic(Guid.Parse("00000100-0004-1000-8000-001a11000102"), GattCharacteristicProperties.Notify);
             var outgoing = notify;
             notificationPump = new BleNotificationPump<GattSubscribedClient>(
-                () => outgoing.SubscribedClients.Select(c => new BleSubscription<GattSubscribedClient>(c.Session.DeviceId.Id, c, c.MaxNotificationSize, c.Session.SessionStatus == GattSessionStatus.Active)).ToArray(),
+                // Retain subscription-event clients as in the working 0.3.1 receiver;
+                // refresh them on subscription changes, and check capacity/state live.
+                () => Volatile.Read(ref subscriptions).Select(c => new BleSubscription<GattSubscribedClient>(c.Session.DeviceId.Id, c, c.MaxNotificationSize, c.Session.SessionStatus == GattSessionStatus.Active)).ToArray(),
                 (client, packet, token) => BleNotificationDelivery.SendAsync(
                     () => outgoing.NotifyValueAsync(packet.ToArray().AsBuffer(), client),
-                    (operation, cancellation) => operation.AsTask(cancellation).WaitAsync(TimeSpan.FromSeconds(5), cancellation),
+                    WaitForNotificationAsync,
                     result => result.Status switch
                     {
                         GattCommunicationStatus.Success => BleNotificationOutcome.Success,
@@ -78,6 +81,29 @@ internal sealed class QuickShareGattService
             provider.StartAdvertising(new GattServiceProviderAdvertisingParameters { IsConnectable = true, IsDiscoverable = true, ServiceData = header.AsBuffer() });
         }
         catch (Exception e) { await StopAsync(); SetState("Faulted", e.Message); Activity?.Invoke("Quick Share GATT: " + e.Message); }
+    }
+
+    private async Task<GattClientNotificationResult> WaitForNotificationAsync(
+        Windows.Foundation.IAsyncOperation<GattClientNotificationResult> operation, CancellationToken token)
+    {
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(15));
+            return await operation.AsTask(deadline.Token);
+        }
+        catch (Exception error)
+        {
+            // Native ErrorCode exceptions have no managed call-site stack. Record the
+            // actual operation state/HRESULT before the bridge wraps the exception.
+            string state, nativeError;
+            try { state = operation.Status.ToString(); }
+            catch (Exception ex) { state = "unavailable (0x" + ex.HResult.ToString("X8") + ")"; }
+            try { nativeError = operation.ErrorCode is { } ex ? "0x" + ex.HResult.ToString("X8") : "none"; }
+            catch (Exception ex) { nativeError = "unavailable (0x" + ex.HResult.ToString("X8") + ")"; }
+            Activity?.Invoke($"Quick Share BLE native notification: state={state} nativeError={nativeError} waitError=0x{error.HResult:X8}; no packet replay");
+            throw;
+        }
     }
 
     private async Task<GattLocalCharacteristic> CreateCharacteristic(Guid id, GattCharacteristicProperties properties)
@@ -110,6 +136,7 @@ internal sealed class QuickShareGattService
         lock (peerGate)
         {
             var subscribed = sender.SubscribedClients.ToDictionary(c => c.Session.DeviceId.Id);
+            Volatile.Write(ref subscriptions, subscribed.Values.ToArray());
             Activity?.Invoke($"Quick Share BLE subscriptions: {subscribed.Count}; " + string.Join(", ", subscribed.Values.Select(c => $"state={c.Session.SessionStatus} capacity={c.MaxNotificationSize} ATT={c.Session.MaxPduSize}")));
             foreach (var existing in peers.ToArray())
                 if (!subscribed.ContainsKey(existing.Key)) { if (peers.TryRemove(existing.Key, out var old)) old.Stop(); }
@@ -166,7 +193,7 @@ internal sealed class QuickShareGattService
         if (readCharacteristic is not null) readCharacteristic.ReadRequested -= ReadRequested;
         if (writeCharacteristic is not null) writeCharacteristic.WriteRequested -= WriteRequested;
         stop?.Cancel();
-        lock (peerGate) { foreach (var peer in peers.Values) peer.Stop(); peers.Clear(); }
+        lock (peerGate) { Volatile.Write(ref subscriptions, []); foreach (var peer in peers.Values) peer.Stop(); peers.Clear(); }
         try { oldProvider?.StopAdvertising(); } catch { }
         if (notify is not null) notify.SubscribedClientsChanged -= SubscribedClientsChanged;
         provider = null; notify = null; notificationPump = null; readCharacteristic = null; writeCharacteristic = null; stop?.Dispose(); stop = null;

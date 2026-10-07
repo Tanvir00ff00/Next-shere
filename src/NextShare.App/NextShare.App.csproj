@@ -9,7 +9,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>NextShare</AssemblyName>
-    <Version>0.4.7</Version>
+    <Version>0.4.8</Version>
     <ApplicationIcon>Assets/nextshare.ico</ApplicationIcon>
     <NativeConfiguration Condition="'$(Configuration)' == 'Release'">release</NativeConfiguration>
     <NativeConfiguration Condition="'$(NativeConfiguration)' == ''">debug</NativeConfiguration>
